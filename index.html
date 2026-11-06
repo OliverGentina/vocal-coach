@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tonlabor Gesangstrainer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Studio-Konsole: kühle Neutraltöne, Kobalt als Zielton-Farbe, Signalfarben für die Bewertung */
+  --bg: #eef1f5;
+  --surface: #ffffff;
+  --ink: #18202c;
+  --muted: #5b6577;
+  --line: #d9dee6;
+  --accent: #2c55d8;
+  --accent-soft: rgba(44, 85, 216, 0.14);
+  --good: #18925a;
+  --warn: #c98008;
+  --bad: #cc3f36;
+  --font-display: "Sora", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1218; --surface: #161c25; --ink: #e6eaf1; --muted: #9aa4b4; --line: #283141;
+    --accent: #7d9bff; --accent-soft: rgba(125, 155, 255, 0.18);
+    --good: #3cc486; --warn: #e9a63a; --bad: #f06a5f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1218; --surface: #161c25; --ink: #e6eaf1; --muted: #9aa4b4; --line: #283141;
+  --accent: #7d9bff; --accent-soft: rgba(125, 155, 255, 0.18);
+  --good: #3cc486; --warn: #e9a63a; --bad: #f06a5f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-body); }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h1 { font-size: 22px; }
+h2 { font-size: 17px; }
+.wrap { max-width: 980px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand p { margin: 0; color: var(--muted); font-size: 13px; }
+.chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); white-space: nowrap; }
+.chip.good { color: var(--good); border-color: var(--good); }
+.chip.warn { color: var(--warn); border-color: var(--warn); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--bg); padding: 4px; border-radius: 10px; }
+.seg button { border: 0; background: transparent; color: var(--muted); font: 500 14px var(--font-body); padding: 8px 4px; border-radius: 7px; cursor: pointer; }
+.seg button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; }
+.controls label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); flex: 1 1 120px; }
+select { font: 15px var(--font-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; width: 100%; }
+.lane-wrap { position: relative; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); }
+canvas#lane { display: block; width: 100%; height: 290px; }
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; font: 700 64px var(--font-display); color: var(--accent); background: color-mix(in srgb, var(--bg) 55%, transparent); pointer-events: none; }
+.overlay[hidden] { display: none; }
+.live { position: absolute; top: 8px; right: 10px; font: 500 13px var(--font-mono); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
+.live[hidden] { display: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 18px; height: 8px; border-radius: 3px; display: inline-block; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { font: 600 14px var(--font-body); border-radius: 9px; padding: 10px 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.rec { background: var(--bad); border-color: var(--bad); color: #fff; }
+.btn:disabled { opacity: .45; cursor: default; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.status { margin: 0; font-size: 13px; color: var(--muted); min-height: 1.5em; }
+.status.err { color: var(--bad); }
+.check { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.res-head { display: flex; gap: 14px; align-items: center; }
+.score { font: 700 40px/1 var(--font-display); font-variant-numeric: tabular-nums; min-width: 92px; }
+.score small { font-size: 15px; color: var(--muted); font-weight: 500; }
+.badge { font: 600 11px var(--font-body); text-transform: uppercase; letter-spacing: .06em; color: var(--warn); }
+.muted { color: var(--muted); margin: 0; font-size: 13px; }
+.meters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.meter { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 6px; }
+.meter h3 { font-size: 13px; font-family: var(--font-body); font-weight: 600; color: var(--muted); }
+.meter .val { font: 600 18px var(--font-display); font-variant-numeric: tabular-nums; }
+.meter .sub { font-size: 12px; color: var(--muted); }
+.bar { position: relative; height: 8px; border-radius: 4px; background: var(--bg); }
+.bar.cents { background: linear-gradient(90deg, var(--bad), var(--warn) 30%, var(--good) 42%, var(--good) 58%, var(--warn) 70%, var(--bad)); opacity: .85; }
+.bar.timbre { background: linear-gradient(90deg, #8aa7c9, var(--good) 40%, var(--good) 60%, #d07a52); opacity: .85; }
+.bar .mk { position: absolute; top: -4px; width: 4px; height: 16px; border-radius: 2px; background: var(--ink); transform: translateX(-2px); }
+.bar .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--accent); }
+.scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.tips { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.tips li { padding: 8px 10px 8px 12px; border-left: 3px solid var(--accent); background: var(--bg); border-radius: 0 8px 8px 0; font-size: 14px; max-width: 70ch; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+td.num { font-family: var(--font-mono); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.hist { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; }
+.hist li { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line); padding: 4px 0; }
+.hist .num { font-family: var(--font-mono); }
+details summary { cursor: pointer; font: 600 15px var(--font-display); }
+details p, details li { font-size: 14px; max-width: 72ch; }
+details ul { padding-left: 18px; }
+a { color: var(--accent); }
+@media (max-width: 720px) {
+  .meters, .two { grid-template-columns: 1fr; }
+  canvas#lane { height: 250px; }
+}
+@media (max-width: 400px) {
+  .seg button { font-size: 13px; }
+  .score { font-size: 34px; min-width: 76px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg width="38" height="38" viewBox="0 0 38 38" aria-hidden="true"><rect width="38" height="38" rx="10" fill="var(--accent)"/><path d="M6 24c3 0 3-10 6-10s3 14 6 14 3-18 6-18 3 10 8 10" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>
+      <div><h1>Tonlabor</h1><p>Töne und Intervalle treffen, den eigenen Klang verstehen</p></div>
+    </div>
+    <span id="micChip" class="chip">Mikrofon: wird beim Einsingen geprüft</span>
+  </header>
+
+  <section class="card" aria-label="Lektion">
+    <div class="seg" role="tablist" id="types">
+      <button role="tab" data-type="single" id="t-single">Einzelton</button>
+      <button role="tab" data-type="interval" id="t-interval">Intervall</button>
+      <button role="tab" data-type="scale" id="t-scale">Tonleiter</button>
+      <button role="tab" data-type="triad" id="t-triad">Dreiklang</button>
+    </div>
+    <div class="controls">
+      <label for="voice">Stimmlage<select id="voice"></select></label>
+      <label for="root">Grundton<select id="root"></select></label>
+      <label for="interval" id="intWrap">Intervall<select id="interval"></select></label>
+      <label for="dir" id="dirWrap">Richtung<select id="dir"><option value="1">aufwärts</option><option value="-1">abwärts</option></select></label>
+      <label for="tempo">Tempo<select id="tempo"><option value="1.4">langsam</option><option value="1">mittel</option><option value="0.7">zügig</option></select></label>
+    </div>
+    <div class="lane-wrap">
+      <canvas id="lane" aria-label="Notenbahn: Zieltöne als Balken, deine Tonhöhe als Linie"></canvas>
+      <div id="overlay" class="overlay" hidden></div>
+      <div id="live" class="live" hidden></div>
+    </div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--accent-soft);border:1px solid var(--accent)"></i>Zielton (±25 Cent)</span>
+      <span><i class="sw" style="background:var(--good)"></i>bis 15 Cent</span>
+      <span><i class="sw" style="background:var(--warn)"></i>bis 35 Cent</span>
+      <span><i class="sw" style="background:var(--bad)"></i>darüber</span>
+    </div>
+    <div class="actions">
+      <button id="btnPlay" class="btn">▶ Vorspielen</button>
+      <button id="btnSing" class="btn primary">● Einsingen</button>
+      <button id="btnFile" class="btn">Aufnahme hochladen</button>
+      <input type="file" id="fileIn" accept="audio/*,.m4a,.wav,.mp3,.aac,.caf" hidden>
+      <button id="btnDown" class="btn" aria-label="Halbton tiefer">↓ Halbton</button>
+      <button id="btnUp" class="btn" aria-label="Halbton höher">↑ Halbton</button>
+    </div>
+    <p id="status" class="status" aria-live="polite"></p>
+    <label class="check" for="guide"><input type="checkbox" id="guide"> Zielton beim Singen leise mitspielen (nur mit Kopfhörern, sonst verfälscht er die Messung)</label>
+  </section>
+
+  <section class="card" aria-label="Auswertung">
+    <div class="res-head">
+      <div class="score"><span id="score">–</span><small>/100</small></div>
+      <div>
+        <span id="badge" class="badge">Beispiel</span>
+        <h2 id="resTitle">Auswertung</h2>
+        <p id="resSub" class="muted"></p>
+      </div>
+    </div>
+    <div class="meters">
+      <div class="meter">
+        <h3>Tonhöhe</h3>
+        <div class="val" id="mPitch">–</div>
+        <div class="bar cents"><i class="mk" id="mPitchMk" style="left:50%"></i></div>
+        <div class="scale"><span>−50 ct</span><span>0</span><span>+50 ct</span></div>
+        <div class="sub" id="mPitchSub"></div>
+      </div>
+      <div class="meter">
+        <h3>Lautstärke</h3>
+        <div class="val" id="mLoud">–</div>
+        <div class="bar"><i class="fill" id="mLoudFill" style="width:0"></i></div>
+        <div class="scale"><span>−60 dBFS</span><span>0</span></div>
+        <div class="sub" id="mLoudSub"></div>
+      </div>
+      <div class="meter">
+        <h3>Klang</h3>
+        <div class="val" id="mTone">–</div>
+        <div class="bar timbre"><i class="mk" id="mToneMk" style="left:50%"></i></div>
+        <div class="scale"><span>luftig</span><span>ausgewogen</span><span>gepresst</span></div>
+        <div class="sub" id="mToneSub"></div>
+      </div>
+    </div>
+    <ul id="tips" class="tips"></ul>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Ton</th><th>Abweichung</th><th>Schwankung</th><th>Einsatz</th><th>Pegel</th><th>Klang</th><th>Punkte</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="two">
+    <section class="card" aria-label="Kalibrierung">
+      <h2>Kalibrierung</h2>
+      <p class="muted" id="calStatus"></p>
+      <p class="muted">So geht’s: Tonleiter wählen, bequem, mittellaut und mit deinem normalen, ausgewogenen Klang einsingen, dann übernehmen. Ab dann wird „luftig“ und „gepresst“ relativ zu deiner Stimme, deinem Raum und deinem Mikrofon gemessen.</p>
+      <div class="actions">
+        <button id="btnCal" class="btn" disabled>Letzte Aufnahme übernehmen</button>
+        <button id="btnCalClear" class="btn">Zurücksetzen</button>
+      </div>
+    </section>
+    <section class="card" aria-label="Verlauf">
+      <h2>Verlauf</h2>
+      <ul class="hist" id="hist"></ul>
+    </section>
+  </div>
+
+  <section class="card">
+    <details>
+      <summary>So misst die App, und Quellen</summary>
+      <p>Alles wird lokal in deinem Browser berechnet. Es werden keine Aufnahmen hochgeladen.</p>
+      <ul>
+        <li><b>Tonhöhe:</b> YIN-Algorithmus, alle 21 ms. Abweichung in Cent (100 Cent = 1 Halbton). Bewertet wird der stabile Teil jedes Tons. Einsatzzeit und Anschleifen werden separat erfasst. Wer eine Oktave versetzt singt, wird nicht bestraft.</li>
+        <li><b>Lautstärke:</b> Pegel in dBFS, also relativ zum Mikrofon, nicht in absoluten Dezibel. Schwankung und Abfall zum Tonende werden ausgewertet.</li>
+        <li><b>Klang:</b> Cepstral Peak Prominence (CPP) und Rauschabstand (HNR) zeigen Luftigkeit an. H1–H2 (Grundton im Vergleich zum 2. Teilton) und spektrale Neigung zeigen gepressten Klang. Das ist ein Richtwert, keine Diagnose. Kopfstimme klingt technisch „leichter“ und wird ohne Kalibrierung eher als luftig eingestuft.</li>
+        <li><b>Live-Modus:</b> In der Claude-Ansicht ist das Mikrofon gesperrt, dort funktioniert nur das Hochladen. Läuft die Datei als normale Webseite (https), geht auch live einsingen. Für iPhone-Aufnahmen: Sprachmemos → Teilen → „In Dateien sichern“, dann hier hochladen. Anfang und Ende der Aufnahme werden automatisch an die Übung angepasst.</li>
+      </ul>
+      <p><b>Quellen</b></p>
+      <ul>
+        <li>de Cheveigné & Kawahara (2002): YIN, a fundamental frequency estimator. <a href="https://doi.org/10.1121/1.1458024">doi.org/10.1121/1.1458024</a></li>
+        <li>Hillenbrand, Cleveland & Erickson (1994): Acoustic correlates of breathy vocal quality (CPP). <a href="https://doi.org/10.1044/jshr.3704.769">doi.org/10.1044/jshr.3704.769</a></li>
+        <li>Stoller & Dixon (2016): Analysis and classification of phonation modes in singing, ISMIR (CC BY 4.0). <a href="https://archives.ismir.net/ismir2016/paper/000233.pdf">archives.ismir.net</a></li>
+        <li>Samlan, Story & Bunton (2013): Relation of perceived breathiness to laryngeal kinematics and acoustic measures. <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC3984008">pmc.ncbi.nlm.nih.gov</a></li>
+        <li>Offener Datensatz für die nächste Stufe (Schwellen kalibrieren): VocalSet, 20 Profi-Sänger, 17 Techniken. <a href="https://zenodo.org/records/1442513">zenodo.org/records/1442513</a>, Annotationen: <a href="https://zenodo.org/record/7061507">zenodo.org/record/7061507</a></li>
+      </ul>
+    </details>
+  </section>
+</div>
+
+<script>
+/* Tonlabor DSP-Kern
+   Verfahren (alle frei veröffentlicht):
+   - Tonhöhe: YIN (de Cheveigné & Kawahara 2002)
+   - Luftigkeit: Cepstral Peak Prominence (Hillenbrand et al. 1994), HNR
+   - Gepresst/luftig: H1–H2 (Grundton vs. 2. Teilton), Alpha-Ratio (spektrale Neigung)
+*/
+const DSP = (function () {
+  const NAMES = ['C', 'Cis', 'D', 'Dis', 'E', 'F', 'Fis', 'G', 'Gis', 'A', 'B', 'H'];
+  const midiToHz = m => 440 * Math.pow(2, (m - 69) / 12);
+  const hzToMidi = f => 69 + 12 * Math.log2(f / 440);
+  const noteName = m => { const r = Math.round(m); return NAMES[((r % 12) + 12) % 12] + (Math.floor(r / 12) - 1); };
+  const pc = m => NAMES[((Math.round(m) % 12) + 12) % 12];
+
+  function median(a) { if (!a.length) return NaN; const s = Float64Array.from(a).sort(); const h = s.length >> 1; return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; }
+  function mean(a) { if (!a.length) return NaN; let s = 0; for (const v of a) s += v; return s / a.length; }
+  function sd(a) { if (a.length < 2) return 0; const m = mean(a); let s = 0; for (const v of a) s += (v - m) * (v - m); return Math.sqrt(s / (a.length - 1)); }
+  function percentile(a, p) { if (!a.length) return NaN; const s = Float64Array.from(a).sort(); return s[Math.min(s.length - 1, Math.max(0, Math.floor(p * (s.length - 1))))]; }
+  function linfit(xs, ys) { const n = xs.length; if (n < 2) return { a: ys[0] || 0, b: 0 }; const mx = mean(xs), my = mean(ys); let sxy = 0, sxx = 0; for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; } const b = sxx > 1e-9 ? sxy / sxx : 0; return { a: my - b * mx, b }; }
+
+  function fft(re, im) {
+    const n = re.length;
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+    }
+    for (let len = 2; len <= n; len <<= 1) {
+      const ang = -2 * Math.PI / len, half = len >> 1;
+      for (let k = 0; k < half; k++) {
+        const wr = Math.cos(ang * k), wi = Math.sin(ang * k);
+        for (let i = 0; i < n; i += len) {
+          const a = i + k, b = a + half;
+          const xr = re[b] * wr - im[b] * wi, xi = re[b] * wi + im[b] * wr;
+          re[b] = re[a] - xr; im[b] = im[a] - xi; re[a] += xr; im[a] += xi;
+        }
+      }
+    }
+  }
+
+  const hannCache = {};
+  function hann(n) { if (!hannCache[n]) { const w = new Float64Array(n); for (let i = 0; i < n; i++) w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1)); hannCache[n] = w; } return hannCache[n]; }
+
+  // YIN auf x (Länge 2W). Liefert f0, Aperiodizität, normierte Autokorrelation.
+  function yin(x, sr, fmin = 60, fmax = 1100, th = 0.15) {
+    const W = x.length >> 1;
+    const tauMin = Math.max(2, Math.floor(sr / fmax));
+    const tauMax = Math.min(W - 2, Math.ceil(sr / fmin));
+    const d = new Float64Array(tauMax + 2);
+    for (let tau = 1; tau <= tauMax + 1; tau++) {
+      let s = 0;
+      for (let i = 0; i < W; i++) { const v = x[i] - x[i + tau]; s += v * v; }
+      d[tau] = s;
+    }
+    const dn = new Float64Array(tauMax + 2); dn[0] = 1; let run = 0;
+    for (let tau = 1; tau <= tauMax + 1; tau++) { run += d[tau]; dn[tau] = run > 0 ? d[tau] * tau / run : 1; }
+    let tau = -1;
+    for (let t = tauMin; t <= tauMax; t++) {
+      if (dn[t] < th) { while (t + 1 <= tauMax && dn[t + 1] < dn[t]) t++; tau = t; break; }
+    }
+    if (tau < 0) { let best = Infinity; for (let t = tauMin; t <= tauMax; t++) if (dn[t] < best) { best = dn[t]; tau = t; } }
+    let tp = tau;
+    if (tau > 1 && tau < tauMax + 1) { const a = dn[tau - 1], b = dn[tau], c = dn[tau + 1]; const den = a - 2 * b + c; if (Math.abs(den) > 1e-12) tp = tau + 0.5 * (a - c) / den; }
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let i = 0; i < W; i++) { sxy += x[i] * x[i + tau]; sxx += x[i] * x[i]; syy += x[i + tau] * x[i + tau]; }
+    const r = sxx > 0 && syy > 0 ? sxy / Math.sqrt(sxx * syy) : 0;
+    return { f0: sr / tp, ap: dn[tau], r };
+  }
+
+  // Spektrale Stimmklang-Merkmale auf Fenster x (Länge N, Zweierpotenz)
+  function voiceQuality(x, sr, f0) {
+    const N = x.length, w = hann(N);
+    const re = new Float64Array(N), im = new Float64Array(N);
+    for (let i = 0; i < N; i++) re[i] = x[i] * w[i];
+    fft(re, im);
+    const half = N >> 1, P = new Float64Array(half + 1);
+    for (let k = 0; k <= half; k++) P[k] = re[k] * re[k] + im[k] * im[k];
+    const binHz = sr / N;
+    const peakDb = f => { const lo = Math.max(1, Math.floor(Math.min(f * 0.9, f - 2 * binHz) / binHz)), hi = Math.min(half, Math.ceil(Math.max(f * 1.1, f + 2 * binHz) / binHz)); let m = 0; for (let k = lo; k <= hi; k++) if (P[k] > m) m = P[k]; return 10 * Math.log10(m + 1e-20); };
+    const h1h2 = peakDb(f0) - peakDb(2 * f0);
+    let lo = 0, hi = 0;
+    for (let k = 0; k <= half; k++) { const f = k * binHz; if (f >= 50 && f < 1000) lo += P[k]; else if (f >= 1000 && f < 5000) hi += P[k]; }
+    const alpha = 10 * Math.log10((hi + 1e-20) / (lo + 1e-20));
+    // Cepstrum: Spektrum des log-Leistungsspektrums
+    const cr = new Float64Array(N), ci = new Float64Array(N);
+    for (let k = 0; k < N; k++) { const kk = k <= half ? k : N - k; cr[k] = 10 * Math.log10(P[kk] + 1e-20); }
+    fft(cr, ci);
+    const q0 = Math.round(0.001 * sr), q1 = Math.min(half - 1, Math.round(0.02 * sr));
+    const C = new Float64Array(q1 + 1);
+    for (let q = 0; q <= q1; q++) C[q] = 10 * Math.log10(cr[q] * cr[q] + ci[q] * ci[q] + 1e-20);
+    const xs = [], ys = [];
+    for (let q = q0; q <= q1; q++) { xs.push(q); ys.push(C[q]); }
+    const fit = linfit(xs, ys);
+    const pLo = Math.max(q0, Math.floor(sr / (f0 * 1.15))), pHi = Math.min(q1, Math.ceil(sr / (f0 * 0.87)));
+    let pk = -1, pv = -Infinity;
+    for (let q = pLo; q <= pHi; q++) if (C[q] > pv) { pv = C[q]; pk = q; }
+    const cpp = pk > 0 ? pv - (fit.a + fit.b * pk) : NaN;
+    return { h1h2, alpha, cpp };
+  }
+
+  // Analyse eines ganzen Signals → Frames
+  function analyze(samples, sr, opts = {}) {
+    const N = 4096, Y = 2048, hop = opts.hop || 1024;
+    const fmin = opts.fmin || 60, fmax = opts.fmax || 1100;
+    const frames = [];
+    for (let pos = 0; pos + N <= samples.length; pos += hop) {
+      const c = pos + (N >> 1);
+      let s = 0, pk = 0;
+      for (let i = c - 1024; i < c + 1024; i++) { const v = samples[i]; s += v * v; const a = v < 0 ? -v : v; if (a > pk) pk = a; }
+      frames.push({ t: c / sr, pos, db: 10 * Math.log10(s / 2048 + 1e-12), peak: pk, voiced: false });
+    }
+    if (!frames.length) return { frames, sr, gate: -60, clipped: false };
+    const floor = percentile(frames.map(f => f.db), 0.1);
+    const loud = percentile(frames.map(f => f.db), 0.95);
+    const gate = Math.max(-62, Math.min(floor + 10, loud - 25));
+    for (const f of frames) {
+      if (f.db < gate) continue;
+      const c = f.pos + (N >> 1);
+      const y = yin(samples.subarray(c - (Y >> 1), c + (Y >> 1)), sr, fmin, fmax);
+      if (y.ap > 0.4 || !(y.f0 >= fmin && y.f0 <= fmax)) continue;
+      f.voiced = true; f.f0 = y.f0; f.midi = hzToMidi(y.f0); f.ap = y.ap;
+      const r = Math.min(0.99999, Math.max(1e-5, y.r));
+      f.hnr = 10 * Math.log10(r / (1 - r));
+      Object.assign(f, voiceQuality(samples.subarray(f.pos, f.pos + N), sr, y.f0));
+    }
+    // Ausreißer glätten: Median über 5 Frames innerhalb stimmhafter Abschnitte
+    const m = frames.map(f => f.voiced ? f.midi : null);
+    for (let i = 0; i < frames.length; i++) {
+      if (m[i] == null) continue;
+      const nb = [];
+      for (let j = i - 2; j <= i + 2; j++) if (j >= 0 && j < frames.length && m[j] != null) nb.push(m[j]);
+      if (nb.length >= 3) { const md = median(nb); if (Math.abs(m[i] - md) > 0.7) { frames[i].midi = md; frames[i].f0 = midiToHz(md); } }
+    }
+    // Einzelne stimmhafte Frames ohne Nachbarn verwerfen
+    for (let i = 0; i < frames.length; i++) {
+      if (!frames[i].voiced) continue;
+      const a = i > 0 && frames[i - 1].voiced, b = i < frames.length - 1 && frames[i + 1].voiced;
+      if (!a && !b) frames[i].voiced = false;
+    }
+    return { frames, sr, gate, clipped: frames.some(f => f.peak > 0.985) };
+  }
+
+  // Standard-Basiswerte ohne Kalibrierung (grob, aus Tests mit Modellstimmen und Literaturwerten)
+  const DEFAULT_BASE = { h1h2: 1, cpp: 22, hnr: 18, alpha: -12 };
+
+  function baseline(calib, midi) {
+    if (!calib || !calib.fit) return { ...DEFAULT_BASE, calibrated: false };
+    const m = Math.min(calib.maxMidi + 3, Math.max(calib.minMidi - 3, midi));
+    const out = { calibrated: true };
+    for (const k of Object.keys(DEFAULT_BASE)) { const f = calib.fit[k]; out[k] = f ? f.a + f.b * m : DEFAULT_BASE[k]; }
+    return out;
+  }
+
+  // Klangwert q: −1 = luftig … 0 = ausgewogen … +1 = gepresst
+  function timbre(feat, midi, calib) {
+    if (!feat || !isFinite(feat.cpp)) return null;
+    const b = baseline(calib, midi);
+    // Ohne Kalibrierung: saubere Aufnahme zählt nicht als „gepresst“; Alpha-Ratio (vokalabhängig) nur schwach
+    const pos = v => b.calibrated ? v : Math.max(0, v);
+    const breathy = pos((b.cpp - feat.cpp) / 3) + pos((b.hnr - feat.hnr) / 6) + (feat.h1h2 - b.h1h2) / 6;
+    const pressed = (b.h1h2 - feat.h1h2) / 4 + (feat.alpha - b.alpha) / (b.calibrated ? 4 : 8);
+    const q = Math.tanh((pressed - breathy) / 2);
+    let label;
+    if (q < -0.45) label = 'luftig'; else if (q < -0.2) label = 'leicht luftig'; else if (q <= 0.2) label = 'ausgewogen'; else if (q <= 0.45) label = 'leicht gepresst'; else label = 'gepresst';
+    return { q, label, breathy, pressed, calibrated: b.calibrated };
+  }
+
+  // Bewertung gegen eine Lektion
+  function evaluate(an, lesson, opts = {}) {
+    const frames = an.frames;
+    let map;
+    if (opts.align === 'stretch') {
+      const v = frames.filter((f, i) => f.voiced && frames[i + 1] && frames[i + 1].voiced && frames[i + 2] && frames[i + 2].voiced);
+      if (v.length < 3) return { empty: true };
+      const t0 = v[0].t, t1 = frames.filter(f => f.voiced).slice(-1)[0].t;
+      const L0 = lesson.notes[0].start, L1 = lesson.total;
+      const k = t1 > t0 ? (L1 - L0) / (t1 - t0) : 1;
+      map = t => L0 + (t - t0) * k;
+    } else { const off = opts.offset || 0; map = t => t - off; }
+    for (const f of frames) f.tt = map(f.t);
+
+    const notes = lesson.notes.map((n, idx) => {
+      const ft = midiToHz(n.midi);
+      const win = frames.filter(f => f.tt >= n.start && f.tt < n.start + n.dur);
+      const sStart = n.start + Math.min(0.22, 0.3 * n.dur), sEnd = n.start + n.dur - 0.08 * n.dur;
+      const steady = win.filter(f => f.voiced && f.tt >= sStart && f.tt <= sEnd);
+      const voicedWin = win.filter(f => f.voiced);
+      const res = { idx, midi: n.midi, name: noteName(n.midi), start: n.start, dur: n.dur, coverage: win.length ? voicedWin.length / win.length : 0 };
+      if (steady.length < 2) { res.missing = true; res.score = 0; return res; }
+      let cents = steady.map(f => 1200 * Math.log2(f.f0 / ft));
+      let octave = 0;
+      const m0 = median(cents);
+      if (Math.abs(m0 - 1200) < 300) octave = 1; else if (Math.abs(m0 + 1200) < 300) octave = -1;
+      if (octave) cents = cents.map(c => c - 1200 * octave);
+      res.octave = octave;
+      res.cents = median(cents);
+      res.spread = sd(cents);
+      res.hit = cents.filter(c => Math.abs(c) <= 25).length / cents.length;
+      const att = voicedWin.find(f => Math.abs(1200 * Math.log2(f.f0 / ft) - 1200 * octave) <= 30);
+      res.attack = att ? Math.max(0, att.tt - n.start) : null;
+      const onset = voicedWin.filter(f => f.tt < (voicedWin[0] ? voicedWin[0].tt + 0.15 : 0)).map(f => 1200 * Math.log2(f.f0 / ft) - 1200 * octave);
+      res.scoop = onset.length >= 2 && median(onset) < -60;
+      res.db = median(steady.map(f => f.db));
+      res.dbSpread = sd(steady.map(f => f.db));
+      res.dbSlope = steady.length >= 4 ? linfit(steady.map(f => f.tt), steady.map(f => f.db)).b : 0;
+      res.feat = { h1h2: median(steady.map(f => f.h1h2)), cpp: median(steady.map(f => f.cpp)), hnr: median(steady.map(f => f.hnr)), alpha: median(steady.map(f => f.alpha)) };
+      res.timbre = timbre(res.feat, n.midi, opts.calib);
+      const acc = Math.max(0, 100 - Math.max(0, Math.abs(res.cents) - 5) * 1.6);
+      const stab = Math.max(0, 100 - Math.max(0, res.spread - 8) * 2.2);
+      const atk = res.attack == null ? 0 : Math.max(0, 100 - Math.max(0, res.attack - 0.15) * 120);
+      const cov = Math.min(1, res.coverage / 0.7);
+      res.score = Math.round((0.6 * acc + 0.25 * stab + 0.15 * atk) * cov);
+      return res;
+    });
+    const sung = notes.filter(n => !n.missing);
+    const overall = {
+      score: Math.round(mean(notes.map(n => n.score))),
+      meanAbs: mean(sung.map(n => Math.abs(n.cents))),
+      tendency: mean(sung.map(n => n.cents)),
+      spread: mean(sung.map(n => n.spread)),
+      db: median(sung.map(n => n.db)),
+      dbSpread: mean(sung.map(n => n.dbSpread)),
+      q: mean(sung.filter(n => n.timbre).map(n => n.timbre.q)),
+      octave: sung.length && sung.every(n => n.octave === sung[0].octave) ? sung[0].octave : 0,
+      missing: notes.length - sung.length,
+      clipped: an.clipped
+    };
+    const curve = frames.filter(f => f.voiced).map(f => ({ t: f.tt, midi: f.midi - 12 * overall.octave, db: f.db }));
+    return { notes, overall, curve, tips: tips(notes, overall, lesson) };
+  }
+
+  function tips(notes, o, lesson) {
+    const out = [];
+    const sung = notes.filter(n => !n.missing);
+    if (!sung.length) return ['Ich habe keinen gesungenen Ton erkannt. Sing etwas lauter oder geh näher ans Mikrofon (etwa 20–30 cm).'];
+    if (o.octave) out.push(`Du singst eine Oktave ${o.octave < 0 ? 'tiefer' : 'höher'} als die Vorgabe. Das ist okay, die Bewertung rechnet das heraus. Wähle sonst einen ${o.octave < 0 ? 'tieferen' : 'höheren'} Grundton.`);
+    if (o.clipped) out.push('Die Aufnahme übersteuert. Geh etwas weiter weg vom Mikrofon.');
+    else if (o.db < -42) out.push('Die Aufnahme ist sehr leise. Geh näher ans Mikrofon, damit die Klangwerte zuverlässig sind.');
+    if (Math.abs(o.tendency) >= 15) out.push(`Insgesamt liegst du im Mittel ${Math.round(Math.abs(o.tendency))} Cent zu ${o.tendency < 0 ? 'tief' : 'hoch'}. ${o.tendency < 0 ? 'Denk den Ton von oben an und halte den Atemstrom aktiv.' : 'Lass den Ton eher sinken, nimm Druck raus.'}`);
+    // Sprünge
+    let upFlat = 0, ups = 0;
+    for (let i = 1; i < sung.length; i++) { const d = sung[i].midi - sung[i - 1].midi; if (d >= 3) { ups++; if (sung[i].cents < -20) upFlat++; } }
+    if (ups && upFlat / ups >= 0.5) out.push('Bei Sprüngen nach oben landest du oft zu tief. Hör den Zielton innerlich vor, bevor du springst.');
+    const scoops = sung.filter(n => n.scoop).length;
+    if (scoops >= Math.max(1, sung.length / 3)) out.push('Du schleifst Töne oft von unten an. Setz direkt auf der Tonhöhe ein, zum Beispiel mit einem leichten „ng“ davor.');
+    const slow = sung.filter(n => n.attack != null && n.attack > 0.35).length;
+    if (slow >= Math.max(1, sung.length / 3)) out.push('Du brauchst eine Weile, bis der Ton sitzt. Übe kurze, gezielte Einsätze auf einem Ton.');
+    if (o.spread > 22) out.push('Die Töne schwanken recht stark. Halte lange Töne gerade, ohne Vibrato, und achte auf einen gleichmäßigen Atemstrom.');
+    const falls = sung.filter(n => n.dbSlope < -5 && n.dur >= 1).length;
+    if (falls >= Math.max(1, sung.length / 2)) out.push('Die Lautstärke fällt zum Tonende ab. Halte die Stütze bis zum Schluss.');
+    if (o.dbSpread > 4) out.push('Die Lautstärke ist unruhig. Ziel: gleichmäßiger Pegel über den ganzen Ton.');
+    if (isFinite(o.q)) {
+      if (o.q < -0.35) out.push('Der Klang ist eher luftig. Schließ die Stimmlippen fester, zum Beispiel mit einem leichten „Ä“-Einsatz oder Übungen mit Strohhalm.');
+      else if (o.q > 0.35) out.push('Der Klang wirkt eher gepresst. Nimm Druck raus: Gähnweite im Hals, weniger Lautstärke, lockerer Kiefer.');
+      const hi = sung.filter(n => n.timbre && n.timbre.q > 0.35 && n.midi >= Math.max(...sung.map(s => s.midi)) - 2).length;
+      if (o.q <= 0.35 && hi && sung.length >= 3) out.push('Bei den höchsten Tönen wird der Klang gepresster. Dort leichter werden, statt mehr zu drücken.');
+    }
+    if (!out.length) out.push('Sauber gesungen. Mach die Übung einen Halbton höher oder probier schwierigere Intervalle.');
+    return out.slice(0, 5);
+  }
+
+  function calibrationFrom(result) {
+    const sung = result.notes.filter(n => !n.missing && n.feat && isFinite(n.feat.cpp));
+    if (sung.length < 3) return null;
+    const xs = sung.map(n => n.midi), fit = {};
+    const distinct = new Set(xs).size;
+    for (const k of Object.keys(DEFAULT_BASE)) {
+      const ys = sung.map(n => n.feat[k]);
+      if (distinct >= 3) { const f = linfit(xs, ys); f.b = Math.max(-1.5, Math.min(1.5, f.b)); f.a = mean(ys) - f.b * mean(xs); fit[k] = f; }
+      else fit[k] = { a: median(ys), b: 0 };
+    }
+    return { fit, minMidi: Math.min(...xs), maxMidi: Math.max(...xs), date: new Date().toISOString() };
+  }
+
+  // Modellstimme (Glottispuls + Formantfilter) für Beispiel und Tests
+  function synthVoice({ sr = 48000, notes, mode = 'modal', cents = () => 0, lead = 0.4, seed = 7 }) {
+    const total = notes.reduce((m, n) => Math.max(m, n.start + n.dur), 0) + lead + 0.4;
+    const len = Math.ceil(total * sr), out = new Float32Array(len);
+    const P = { modal: { oq: 0.6, noise: 0.03 }, breathy: { oq: 0.85, noise: 0.22 }, pressed: { oq: 0.38, noise: 0.01 } }[mode];
+    let s = seed; const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296 - 0.5; };
+    const src = new Float64Array(len); let ph = 0, prev = 0;
+    for (const n of notes) {
+      const a = Math.floor((n.start + lead) * sr), b = Math.floor((n.start + lead + n.dur) * sr);
+      for (let i = a; i < b && i < len; i++) {
+        const t = (i - a) / sr;
+        const f = midiToHz(n.midi) * Math.pow(2, (cents(n, t) + 6 * Math.sin(2 * Math.PI * 5.2 * t) * Math.min(1, t / 0.6)) / 1200);
+        ph += f / sr; if (ph >= 1) ph -= 1;
+        const oq = P.oq, tp = 0.62 * oq;
+        let g = ph < tp ? 0.5 * (1 - Math.cos(Math.PI * ph / tp)) : ph < oq ? Math.cos(Math.PI * (ph - tp) / (2 * (oq - tp))) : 0;
+        const env = Math.min(1, t / 0.05) * Math.min(1, (b - i) / sr / 0.06);
+        const dg = (g - prev) * sr / f; prev = g;
+        src[i] += env * (dg + P.noise * 2.5 * rnd() * (0.4 + g));
+      }
+    }
+    const F = [[700, 80], [1220, 90], [2600, 120], [3300, 180]];
+    let x = src;
+    for (const [fc, bw] of F) {
+      const r = Math.exp(-Math.PI * bw / sr), th = 2 * Math.PI * fc / sr;
+      const a1 = -2 * r * Math.cos(th), a2 = r * r, g = 1 + a1 + a2;
+      const y = new Float64Array(len);
+      for (let i = 0; i < len; i++) y[i] = g * x[i] - a1 * (i > 0 ? y[i - 1] : 0) - a2 * (i > 1 ? y[i - 2] : 0);
+      x = y;
+    }
+    let mx = 0; for (let i = 0; i < len; i++) mx = Math.max(mx, Math.abs(x[i]));
+    for (let i = 0; i < len; i++) out[i] = 0.5 * x[i] / (mx || 1) + 0.0008 * rnd();
+    return out;
+  }
+
+  return { NAMES, midiToHz, hzToMidi, noteName, pc, yin, analyze, evaluate, timbre, calibrationFrom, synthVoice, median, DEFAULT_BASE };
+})();
+if (typeof module !== 'undefined') module.exports = DSP;
+
+</script>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('tonlabor.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('tonlabor.' + k, JSON.stringify(v)); } catch (e) { } }
+  };
+  const VOICES = {
+    bass: { name: 'Bass', lo: 40, hi: 64, root: 45 },
+    bariton: { name: 'Bariton', lo: 43, hi: 67, root: 50 },
+    tenor: { name: 'Tenor', lo: 48, hi: 72, root: 53 },
+    alt: { name: 'Alt', lo: 53, hi: 77, root: 57 },
+    mezzo: { name: 'Mezzosopran', lo: 57, hi: 81, root: 60 },
+    sopran: { name: 'Sopran', lo: 60, hi: 84, root: 64 }
+  };
+  const INTERVALS = ['kleine Sekunde', 'große Sekunde', 'kleine Terz', 'große Terz', 'Quarte', 'Tritonus', 'Quinte', 'kleine Sexte', 'große Sexte', 'kleine Septime', 'große Septime', 'Oktave'];
+  const TYPE_NAMES = { single: 'Einzelton', interval: 'Intervall', scale: 'Tonleiter', triad: 'Dreiklang' };
+
+  const S = Object.assign({ type: 'scale', voice: 'bariton', root: 50, interval: 7, dir: 1, tempo: 1 }, store.get('settings', {}));
+  let calib = store.get('calib', null);
+  let lesson, liveCurve = [], resultCurve = [], playhead = null, busy = false, lastResult = null, lastIsUser = false, activeNote = -1;
+
+  // ---------- Lektion ----------
+  function buildLesson() {
+    const k = +S.tempo, r = +S.root;
+    let steps, dur;
+    if (S.type === 'single') { steps = [0]; dur = 3 * k; }
+    else if (S.type === 'interval') { steps = [0, S.dir * S.interval]; dur = 1.6 * k; }
+    else if (S.type === 'scale') { steps = [0, 2, 4, 5, 7, 5, 4, 2, 0]; dur = 0.8 * k; }
+    else { steps = [0, 4, 7, 12, 7, 4, 0]; dur = 0.8 * k; }
+    const notes = steps.map((s, i) => ({ midi: r + s, start: i * dur, dur }));
+    return { type: S.type, notes, total: notes.length * dur, beat: Math.min(0.75, dur) };
+  }
+  function lessonTitle(L) {
+    const r = DSP.noteName(L.notes[0].midi);
+    if (L.type === 'interval') return `${INTERVALS[S.interval - 1]} ${S.dir > 0 ? 'aufwärts' : 'abwärts'} ab ${r}`;
+    return `${TYPE_NAMES[L.type]} auf ${r}`;
+  }
+
+  // ---------- Bedienelemente ----------
+  function fillSelects() {
+    $('voice').innerHTML = Object.entries(VOICES).map(([k, v]) => `<option value="${k}">${v.name} (${DSP.noteName(v.lo)}–${DSP.noteName(v.hi)})</option>`).join('');
+    $('interval').innerHTML = INTERVALS.map((n, i) => `<option value="${i + 1}">${n}</option>`).join('');
+    fillRoots();
+  }
+  function fillRoots() {
+    const v = VOICES[S.voice];
+    let html = '';
+    for (let m = v.lo; m <= v.hi - 5; m++) html += `<option value="${m}">${DSP.noteName(m)}</option>`;
+    $('root').innerHTML = html;
+    if (S.root < v.lo || S.root > v.hi - 5) S.root = v.root;
+  }
+  function syncUI() {
+    document.querySelectorAll('#types button').forEach(b => b.setAttribute('aria-selected', b.dataset.type === S.type ? 'true' : 'false'));
+    $('voice').value = S.voice; $('root').value = S.root; $('interval').value = S.interval; $('dir').value = S.dir; $('tempo').value = S.tempo;
+    $('intWrap').style.display = $('dirWrap').style.display = S.type === 'interval' ? '' : 'none';
+    lesson = buildLesson();
+    const v = VOICES[S.voice], top = Math.max(...lesson.notes.map(n => n.midi)), bot = Math.min(...lesson.notes.map(n => n.midi));
+    if (!busy) setStatus(top > v.hi || bot < v.lo ? `Achtung: Die Übung geht bis ${DSP.noteName(top)} und liegt damit außerhalb des üblichen Umfangs für ${v.name}.` : `${lessonTitle(lesson)} · ${lesson.total.toFixed(1)} s`);
+    store.set('settings', S);
+    draw();
+  }
+  function changed() { liveCurve = []; resultCurve = []; syncUI(); }
+  document.querySelectorAll('#types button').forEach(b => b.addEventListener('click', () => { if (busy) return; S.type = b.dataset.type; changed(); }));
+  $('voice').addEventListener('change', e => { S.voice = e.target.value; S.root = VOICES[S.voice].root; fillRoots(); changed(); });
+  $('root').addEventListener('change', e => { S.root = +e.target.value; changed(); });
+  $('interval').addEventListener('change', e => { S.interval = +e.target.value; changed(); });
+  $('dir').addEventListener('change', e => { S.dir = +e.target.value; changed(); });
+  $('tempo').addEventListener('change', e => { S.tempo = e.target.value; changed(); });
+  $('btnUp').addEventListener('click', () => { if (busy) return; const v = VOICES[S.voice]; if (S.root < v.hi - 5) { S.root++; changed(); } });
+  $('btnDown').addEventListener('click', () => { if (busy) return; const v = VOICES[S.voice]; if (S.root > v.lo) { S.root--; changed(); } });
+
+  function setStatus(t, err) { $('status').textContent = t; $('status').classList.toggle('err', !!err); }
+  function setBusy(b) { busy = b; ['btnPlay', 'btnFile', 'btnUp', 'btnDown'].forEach(id => $(id).disabled = b); }
+
+  // ---------- Audio ----------
+  let ac = null;
+  function ensureCtx() {
+    if (!ac) { const C = window.AudioContext || window.webkitAudioContext; ac = new C(); }
+    if (ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  function tone(midi, t, dur, gain) {
+    const f = DSP.midiToHz(midi);
+    const o1 = ac.createOscillator(), o2 = ac.createOscillator(), g2 = ac.createGain(), lp = ac.createBiquadFilter(), g = ac.createGain();
+    o1.type = 'triangle'; o2.type = 'sine'; o1.frequency.value = f; o2.frequency.value = 2 * f; g2.gain.value = 0.25;
+    lp.type = 'lowpass'; lp.frequency.value = 2400;
+    o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.connect(ac.destination);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.02);
+    g.gain.setTargetAtTime(gain * 0.6, t + 0.03, 0.3); g.gain.setTargetAtTime(0, t + dur - 0.07, 0.025);
+    o1.start(t); o2.start(t); o1.stop(t + dur + 0.2); o2.stop(t + dur + 0.2);
+  }
+  function click(t, hi) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.frequency.value = hi ? 1600 : 1100; o.connect(g); g.connect(ac.destination);
+    g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    o.start(t); o.stop(t + 0.06);
+  }
+  function animate(t0, until, onFrame) {
+    return new Promise(res => {
+      const step = () => {
+        const t = ac.currentTime - t0;
+        playhead = t; activeNote = lesson.notes.findIndex(n => t >= n.start && t < n.start + n.dur);
+        if (onFrame) onFrame(t);
+        draw();
+        if (ac.currentTime < until && !abortFlag) requestAnimationFrame(step); else { playhead = null; activeNote = -1; draw(); res(); }
+      };
+      requestAnimationFrame(step);
+    });
+  }
+  let abortFlag = false;
+
+  $('btnPlay').addEventListener('click', async () => {
+    if (busy) return;
+    try { ensureCtx(); } catch (e) { setStatus('Audio wird von diesem Browser nicht unterstützt.', true); return; }
+    setBusy(true); $('btnSing').disabled = true; abortFlag = false;
+    const t0 = ac.currentTime + 0.1;
+    lesson.notes.forEach(n => tone(n.midi, t0 + n.start, n.dur, 0.22));
+    setStatus('Hör zu …');
+    await animate(t0, t0 + lesson.total + 0.1);
+    setBusy(false); $('btnSing').disabled = false; setStatus('Jetzt du: „Einsingen“ oder eine Aufnahme hochladen.');
+  });
+
+  // ---------- Live einsingen ----------
+  let rec = null;
+  $('btnSing').addEventListener('click', async () => {
+    if (rec) { abortFlag = true; return; }
+    if (busy) return;
+    try { ensureCtx(); } catch (e) { setStatus('Audio wird von diesem Browser nicht unterstützt.', true); return; }
+    let stream;
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('nomedia');
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+    } catch (e) {
+      $('micChip').textContent = 'Mikrofon gesperrt · Upload nutzen'; $('micChip').className = 'chip warn';
+      setStatus('Hier ist kein Mikrofon-Zugriff möglich (in der Claude-Ansicht immer gesperrt). Nimm die Übung mit Sprachmemos auf und lade sie über „Aufnahme hochladen“ hoch, oder öffne die App als eigene Webseite.', true);
+      return;
+    }
+    $('micChip').textContent = 'Mikrofon: live'; $('micChip').className = 'chip good';
+    setBusy(true); abortFlag = false; liveCurve = []; resultCurve = [];
+    const src = ac.createMediaStreamSource(stream);
+    const an = ac.createAnalyser(); an.fftSize = 2048; src.connect(an);
+    const proc = ac.createScriptProcessor(4096, 1, 1), mute = ac.createGain(); mute.gain.value = 0;
+    src.connect(proc); proc.connect(mute); mute.connect(ac.destination);
+    const chunks = []; let firstT = null;
+    proc.onaudioprocess = e => { if (firstT === null) firstT = ac.currentTime - 4096 / ac.sampleRate; chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+    rec = { stream };
+    $('btnSing').textContent = '■ Stopp'; $('btnSing').className = 'btn rec';
+    const beat = lesson.beat, t0 = ac.currentTime + 0.25, start = t0 + 4 * beat;
+    for (let i = 0; i < 4; i++) click(t0 + i * beat, i === 0);
+    if ($('guide').checked) lesson.notes.forEach(n => tone(n.midi, start + n.start, n.dur, 0.06));
+    const buf = new Float32Array(2048);
+    setStatus('Einzählen … dann singen. Vokal „a“ oder „ä“, 20–30 cm vor dem Mikrofon.');
+    await animate(start, start + lesson.total + 0.35, t => {
+      const ov = $('overlay');
+      if (t < 0) { ov.hidden = false; ov.textContent = Math.ceil(-t / beat); }
+      else ov.hidden = true;
+      an.getFloatTimeDomainData(buf);
+      let s = 0; for (const v of buf) s += v * v;
+      const db = 10 * Math.log10(s / buf.length + 1e-12);
+      if (db > -55) {
+        const y = DSP.yin(buf, ac.sampleRate);
+        if (y.ap < 0.3 && y.f0 > 60 && y.f0 < 1100) {
+          const m = DSP.hzToMidi(y.f0);
+          if (t >= -0.2) liveCurve.push({ t, midi: m, db });
+          const near = Math.round(m), c = Math.round((m - near) * 100);
+          $('live').hidden = false; $('live').textContent = `${DSP.noteName(near)} ${c >= 0 ? '+' : '−'}${Math.abs(c)} ct`;
+        }
+      }
+    });
+    $('overlay').hidden = true; $('live').hidden = true;
+    proc.disconnect(); src.disconnect(); an.disconnect(); stream.getTracks().forEach(t => t.stop());
+    rec = null; $('btnSing').textContent = '● Einsingen'; $('btnSing').className = 'btn primary';
+    let n = 0; chunks.forEach(c => n += c.length);
+    const all = new Float32Array(n); let o = 0; chunks.forEach(c => { all.set(c, o); o += c.length; });
+    setStatus('Analysiere …');
+    setTimeout(() => {
+      const offset = start - (firstT === null ? start : firstT);
+      finish(DSP.analyze(all, ac.sampleRate), { offset }, 'Live-Aufnahme');
+      setBusy(false);
+    }, 30);
+  });
+
+  // ---------- Upload ----------
+  $('btnFile').addEventListener('click', () => { if (!busy) $('fileIn').click(); });
+  $('fileIn').addEventListener('change', async e => {
+    const file = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!file) return;
+    setBusy(true); $('btnSing').disabled = true; setStatus(`Lese „${file.name}“ …`);
+    try {
+      const arr = await file.arrayBuffer();
+      const C = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      const dec = await new Promise((res, rej) => { const p = new C(1, 1, 44100).decodeAudioData(arr, res, rej); if (p && p.catch) p.catch(rej); });
+      let ch = dec.getChannelData(0);
+      if (dec.numberOfChannels > 1) { const b = dec.getChannelData(1), m = new Float32Array(ch.length); for (let i = 0; i < m.length; i++) m[i] = 0.5 * (ch[i] + b[i]); ch = m; }
+      if (dec.duration > 120) throw new Error('long');
+      setStatus('Analysiere …');
+      await new Promise(r => setTimeout(r, 30));
+      finish(DSP.analyze(ch, dec.sampleRate), { align: 'stretch' }, `Aufnahme „${file.name}“`);
+    } catch (err) {
+      setStatus(err && err.message === 'long' ? 'Die Aufnahme ist länger als 2 Minuten. Kürze sie auf die Übung.' : 'Diese Datei konnte ich nicht lesen. Probier WAV, M4A oder MP3.', true);
+    }
+    setBusy(false); $('btnSing').disabled = false;
+  });
+
+  // ---------- Auswertung ----------
+  function finish(an, opts, source) {
+    const r = DSP.evaluate(an, lesson, Object.assign({ calib }, opts));
+    if (r.empty || r.notes.every(n => n.missing)) {
+      setStatus('Ich habe keinen gesungenen Ton erkannt. Sing lauter oder näher am Mikrofon und prüfe, ob die Übung passt.', true);
+      return;
+    }
+    lastResult = r; lastIsUser = true; resultCurve = r.curve; liveCurve = [];
+    render(r, lessonTitle(lesson), source, false);
+    const h = store.get('history', []);
+    h.unshift({ d: new Date().toISOString(), title: lessonTitle(lesson), score: r.overall.score });
+    store.set('history', h.slice(0, 15)); renderHist();
+    $('btnCal').disabled = !(lesson.type === 'scale' || lesson.type === 'triad');
+    setStatus('Fertig. Wiederhol die Übung oder geh einen Halbton höher.');
+    draw();
+  }
+
+  const fmtC = c => (c > 0 ? '+' : c < 0 ? '−' : '±') + Math.abs(Math.round(c)) + ' ct';
+  const colC = c => Math.abs(c) <= 15 ? 'var(--good)' : Math.abs(c) <= 35 ? 'var(--warn)' : 'var(--bad)';
+  function render(r, title, source, example) {
+    const o = r.overall;
+    $('badge').textContent = example ? 'Beispiel · Modellstimme' : 'Deine Aufnahme';
+    $('badge').style.color = example ? 'var(--warn)' : 'var(--good)';
+    $('score').textContent = isFinite(o.score) ? o.score : '–';
+    $('resTitle').textContent = title;
+    $('resSub').textContent = example ? 'Berechnet aus einer synthetischen Stimme, die leicht zu tief singt. Sing selbst, um deine Werte zu sehen.' : source + (o.missing ? ` · ${o.missing} Ton/Töne nicht erkannt` : '');
+    $('mPitch').textContent = `Ø ${Math.round(o.meanAbs)} ct daneben`;
+    $('mPitchMk').style.left = (50 + Math.max(-50, Math.min(50, o.tendency))) + '%';
+    $('mPitchSub').textContent = `Tendenz ${fmtC(o.tendency)} (${Math.abs(o.tendency) < 8 ? 'ausgeglichen' : o.tendency < 0 ? 'eher zu tief' : 'eher zu hoch'}) · Schwankung ${Math.round(o.spread)} ct`;
+    $('mLoud').textContent = `${String(Math.round(o.db)).replace('-', '−')} dBFS`;
+    $('mLoudFill').style.width = Math.max(0, Math.min(100, (o.db + 60) / 60 * 100)) + '%';
+    $('mLoudSub').textContent = (o.clipped ? 'übersteuert · ' : o.db < -42 ? 'sehr leise · ' : '') + `Schwankung ${o.dbSpread.toFixed(1)} dB (${o.dbSpread <= 2.5 ? 'ruhig' : o.dbSpread <= 4 ? 'etwas unruhig' : 'unruhig'})`;
+    const q = o.q, lab = !isFinite(q) ? '–' : q < -0.45 ? 'luftig' : q < -0.2 ? 'leicht luftig' : q <= 0.2 ? 'ausgewogen' : q <= 0.45 ? 'leicht gepresst' : 'gepresst';
+    $('mTone').textContent = lab;
+    $('mToneMk').style.left = (50 + 50 * (isFinite(q) ? q : 0)) + '%';
+    $('mToneSub').textContent = calib ? 'relativ zu deiner Kalibrierung' : 'Richtwert, noch nicht kalibriert';
+    $('tips').innerHTML = r.tips.map(t => `<li>${t}</li>`).join('');
+    $('rows').innerHTML = r.notes.map(n => n.missing
+      ? `<tr><td>${n.name}</td><td colspan="6" class="muted">nicht erkannt</td></tr>`
+      : `<tr><td>${n.name}${n.octave ? ` <span class="muted">(${n.octave < 0 ? '8va tiefer' : '8va höher'})</span>` : ''}</td>
+          <td class="num"><i class="dot" style="background:${colC(n.cents)}"></i>${fmtC(n.cents)}</td>
+          <td class="num">${Math.round(n.spread)} ct</td>
+          <td class="num">${n.attack == null ? '–' : (n.attack * 1000).toFixed(0) + ' ms'}${n.scoop ? ' ↗' : ''}</td>
+          <td class="num">${String(Math.round(n.db)).replace('-', '−')} dB</td>
+          <td>${n.timbre ? n.timbre.label : '–'}</td>
+          <td class="num">${n.score}</td></tr>`).join('');
+  }
+
+  // ---------- Kalibrierung & Verlauf ----------
+  function renderCal() {
+    $('calStatus').textContent = calib ? `Kalibriert am ${new Date(calib.date).toLocaleDateString('de-DE')} im Bereich ${DSP.noteName(calib.minMidi)}–${DSP.noteName(calib.maxMidi)}.` : 'Noch nicht kalibriert. Die Klangwerte sind bis dahin nur grobe Richtwerte.';
+  }
+  $('btnCal').addEventListener('click', () => {
+    if (!lastResult || !lastIsUser) return;
+    const c = DSP.calibrationFrom(lastResult);
+    if (!c) { setStatus('Für die Kalibrierung brauche ich mindestens drei sauber erkannte Töne.', true); return; }
+    calib = c; store.set('calib', c); renderCal();
+    setStatus('Kalibrierung gespeichert. Ab der nächsten Aufnahme wird der Klang relativ zu dir bewertet.');
+  });
+  $('btnCalClear').addEventListener('click', () => { calib = null; store.set('calib', null); renderCal(); setStatus('Kalibrierung zurückgesetzt.'); });
+  function renderHist() {
+    const h = store.get('history', []);
+    $('hist').innerHTML = h.length ? h.map(e => `<li><span>${new Date(e.d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })} · ${e.title}</span><span class="num">${e.score}</span></li>`).join('') : '<li><span class="muted">Noch keine eigenen Aufnahmen.</span></li>';
+  }
+
+  // ---------- Notenbahn ----------
+  const cv = $('lane');
+  function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  function draw() {
+    if (!lesson) return;
+    const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    const C = { ink: css('--ink'), muted: css('--muted'), line: css('--line'), accent: css('--accent'), soft: css('--accent-soft'), good: css('--good'), warn: css('--warn'), bad: css('--bad'), surface: css('--surface') };
+    const curve = liveCurve.length ? liveCurve : resultCurve;
+    const tm = lesson.notes.map(n => n.midi);
+    let lo = Math.min(...tm) - 2, hi = Math.max(...tm) + 2;
+    for (const p of curve) { if (p.midi < lo && p.midi > Math.min(...tm) - 7) lo = Math.floor(p.midi) - 1; if (p.midi > hi && p.midi < Math.max(...tm) + 7) hi = Math.ceil(p.midi) + 1; }
+    const L = 46, R = 12, T = 12, B = 24, pw = W - L - R, ph = H - T - B;
+    const x = t => L + (t / lesson.total) * pw, y = m => T + (hi - m) / (hi - lo) * ph, row = ph / (hi - lo);
+    g.font = '11px "IBM Plex Sans", system-ui, sans-serif'; g.textBaseline = 'middle';
+    const targetSet = new Set(tm);
+    for (let m = Math.ceil(lo); m <= Math.floor(hi); m++) {
+      const black = [1, 3, 6, 8, 10].includes(((m % 12) + 12) % 12);
+      g.strokeStyle = C.line; g.globalAlpha = black ? 0.45 : 1; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(L, Math.round(y(m)) + 0.5); g.lineTo(W - R, Math.round(y(m)) + 0.5); g.stroke(); g.globalAlpha = 1;
+      if (!black || targetSet.has(m)) {
+        if (row >= 11 || targetSet.has(m) || m % 12 === 0) { g.fillStyle = targetSet.has(m) ? C.ink : C.muted; g.font = (targetSet.has(m) ? '600 ' : '') + '11px "IBM Plex Sans", system-ui, sans-serif'; g.fillText(DSP.noteName(m), 6, y(m)); }
+      }
+    }
+    // Zeitachse
+    g.fillStyle = C.muted; g.font = '10px "IBM Plex Mono", monospace'; g.textBaseline = 'alphabetic';
+    const stepT = lesson.total > 8 ? 2 : 1;
+    for (let t = 0; t <= lesson.total + 0.001; t += stepT) g.fillText(t.toFixed(0) + ' s', x(t) - 6, H - 7);
+    // Zielbalken
+    lesson.notes.forEach((n, i) => {
+      const x0 = x(n.start) + 1.5, x1 = x(n.start + n.dur) - 1.5, h = Math.max(6, row * 0.5);
+      g.fillStyle = C.soft; g.strokeStyle = C.accent; g.lineWidth = i === activeNote ? 2 : 1;
+      roundRect(g, x0, y(n.midi) - h / 2, x1 - x0, h, 4); g.fill(); g.stroke();
+      if (i === activeNote) { g.globalAlpha = 0.25; g.fillStyle = C.accent; roundRect(g, x0, y(n.midi) - h / 2, x1 - x0, h, 4); g.fill(); g.globalAlpha = 1; }
+    });
+    // Kurve
+    g.lineWidth = 2.5; g.lineCap = 'round';
+    for (let i = 1; i < curve.length; i++) {
+      const a = curve[i - 1], b = curve[i];
+      if (b.t - a.t > 0.12 || b.t < 0 || a.t > lesson.total + 0.3) continue;
+      const n = lesson.notes.find(n => b.t >= n.start && b.t < n.start + n.dur);
+      g.strokeStyle = n ? (Math.abs((b.midi - n.midi) * 100) <= 15 ? C.good : Math.abs((b.midi - n.midi) * 100) <= 35 ? C.warn : C.bad) : C.muted;
+      g.beginPath(); g.moveTo(x(a.t), y(a.midi)); g.lineTo(x(b.t), y(b.midi)); g.stroke();
+    }
+    if (playhead != null && playhead >= 0) { g.strokeStyle = C.ink; g.globalAlpha = 0.5; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x(playhead), T); g.lineTo(x(playhead), H - B); g.stroke(); g.globalAlpha = 1; }
+  }
+  function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  window.addEventListener('resize', draw);
+  if (window.matchMedia) { const mq = window.matchMedia('(prefers-color-scheme: dark)'); mq.addEventListener && mq.addEventListener('change', draw); }
+  new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // ---------- Start: Beispielauswertung ----------
+  fillSelects(); syncUI(); renderCal(); renderHist();
+  setTimeout(() => {
+    const keep = Object.assign({}, S);
+    const ex = { type: 'scale', notes: [0, 2, 4, 5, 7, 5, 4, 2, 0].map((s, i) => ({ midi: 50 + s, start: i * 0.8, dur: 0.8 })), total: 7.2 };
+    const off = [-10, -18, -27, -14, -38, -8, -2, -21, -12];
+    const sr = 24000;
+    const x = DSP.synthVoice({ sr, notes: ex.notes, mode: 'modal', lead: 0.4, cents: (n, t) => off[Math.round(n.start / 0.8)] + (Math.round(n.start / 0.8) === 4 && t < 0.12 ? -80 : 0) });
+    const r = DSP.evaluate(DSP.analyze(x, sr), ex, { offset: 0.4 });
+    lastResult = r; lastIsUser = false;
+    render(r, 'Tonleiter auf D3', '', true);
+    if (keep.type === 'scale' && +keep.root === 50 && +keep.tempo === 1) { resultCurve = r.curve; draw(); }
+  }, 60);
+})();
+</script>
+</body>
+</html>
