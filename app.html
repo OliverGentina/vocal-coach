@@ -82,6 +82,11 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .badge { font: 600 11px var(--font-body); text-transform: uppercase; letter-spacing: .06em; color: var(--warn); }
 .muted { color: var(--muted); margin: 0; font-size: 13px; }
 .meters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.target-wrap { display: grid; grid-template-columns: minmax(0, 380px) 1fr; gap: 16px; align-items: center; }
+canvas#target { display: block; width: 100%; aspect-ratio: 1 / 1; }
+.target-note { font-size: 13px; color: var(--muted); display: grid; gap: 8px; max-width: 46ch; }
+.target-note b { color: var(--ink); font-weight: 600; }
+@media (max-width: 720px) { .target-wrap { grid-template-columns: 1fr; } canvas#target { max-width: 380px; margin: 0 auto; } }
 .meter { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 6px; }
 .meter h3 { font-size: 13px; font-family: var(--font-body); font-weight: 600; color: var(--muted); }
 .meter .val { font: 600 18px var(--font-display); font-variant-numeric: tabular-nums; }
@@ -173,6 +178,15 @@ a { color: var(--accent); }
         <span id="badge" class="badge">Beispiel</span>
         <h2 id="resTitle">Auswertung</h2>
         <p id="resSub" class="muted"></p>
+      </div>
+    </div>
+    <div class="target-wrap">
+      <canvas id="target" aria-label="Zielscheibe: senkrecht Tonhöhe (oben zu hoch, unten zu tief), waagerecht Klang (links luftig, rechts gepresst)"></canvas>
+      <div class="target-note">
+        <p style="margin:0"><b>Zielscheibe:</b> Jeder Punkt ist ein gesungener Ton. Je näher an der Mitte, desto besser.</p>
+        <p style="margin:0">Oben = zu hoch, unten = zu tief (Ringe bei 15, 35 und 50 Cent). Links = luftig, rechts = gepresst. Die Farbe eines Punkts zeigt, in welchem Ring er liegt.</p>
+        <p style="margin:0">Der große Punkt ist dein Durchschnitt. Die dünne Linie verbindet die Töne in der gesungenen Reihenfolge.</p>
+        <p style="margin:0" id="targetSummary"></p>
       </div>
     </div>
     <div class="meters">
@@ -472,8 +486,79 @@ a { color: var(--accent); }
 
   const fmtC = c => (c > 0 ? '+' : c < 0 ? '−' : '±') + Math.abs(Math.round(c)) + ' ct';
   const colC = c => Math.abs(c) <= 15 ? 'var(--good)' : Math.abs(c) <= 35 ? 'var(--warn)' : 'var(--bad)';
+  // ---------- Zielscheibe ----------
+  let shown = null;
+  function drawTarget() {
+    const cv2 = $('target'); if (!cv2 || !shown) return;
+    const dpr = window.devicePixelRatio || 1, W = cv2.clientWidth, H = cv2.clientHeight;
+    if (!W || !H) return;
+    if (cv2.width !== Math.round(W * dpr) || cv2.height !== Math.round(H * dpr)) { cv2.width = Math.round(W * dpr); cv2.height = Math.round(H * dpr); }
+    const g = cv2.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    const C = { ink: css('--ink'), muted: css('--muted'), line: css('--line'), accent: css('--accent'), good: css('--good'), warn: css('--warn'), bad: css('--bad'), surface: css('--surface'), bg: css('--bg') };
+    const pad = 30, cx = W / 2, cy = H / 2, R = Math.min(W, H) / 2 - pad;
+    const MAXC = 50;
+    const pos = (cents, q) => {
+      const cy2 = Math.max(-1, Math.min(1, cents / MAXC)), qx = Math.max(-1, Math.min(1, isFinite(q) ? q : 0));
+      return { x: cx + qx * R, y: cy - cy2 * R, clipped: Math.abs(cents) > MAXC };
+    };
+    // Ringe: 15 / 35 / 50 Cent
+    const rings = [[50, C.bad], [35, C.warn], [15, C.good]];
+    for (const [c, col] of rings) {
+      g.beginPath(); g.arc(cx, cy, R * c / MAXC, 0, Math.PI * 2);
+      g.fillStyle = col; g.globalAlpha = 0.10; g.fill(); g.globalAlpha = 0.55; g.strokeStyle = col; g.lineWidth = 1; g.stroke(); g.globalAlpha = 1;
+    }
+    // Achsen
+    g.strokeStyle = C.muted; g.globalAlpha = 0.5; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(cx - R - 6, cy); g.lineTo(cx + R + 6, cy); g.moveTo(cx, cy - R - 6); g.lineTo(cx, cy + R + 6); g.stroke(); g.globalAlpha = 1;
+    g.fillStyle = C.muted; g.font = '600 12px "IBM Plex Sans", system-ui, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.fillText('zu hoch ↑', cx, 16);
+    g.textBaseline = 'bottom'; g.fillText('zu tief ↓', cx, H - 2);
+    g.textBaseline = 'bottom'; g.textAlign = 'left'; g.fillText('← luftig', 2, cy - 4);
+    g.textAlign = 'right'; g.fillText('gepresst →', W - 2, cy - 4);
+    g.font = '10px "IBM Plex Mono", monospace'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = C.muted;
+    for (const c of [15, 35, 50]) g.fillText('+' + c, cx + 4, cy - R * c / MAXC + 7);
+    // Punkte
+    const notes = shown.notes.filter(n => !n.missing);
+    const pts = notes.map(n => ({ n, ...pos(n.cents, n.timbre ? n.timbre.q : 0) }));
+    if (pts.length > 1) {
+      g.strokeStyle = C.ink; g.globalAlpha = 0.18; g.lineWidth = 1; g.beginPath();
+      pts.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)); g.stroke(); g.globalAlpha = 1;
+    }
+    g.font = '600 10px "IBM Plex Sans", system-ui, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
+    const placed = [];
+    for (const p of pts) {
+      const rad = Math.hypot(p.x - cx, p.y - cy) / R;
+      const col = rad <= 15 / MAXC ? C.good : rad <= 35 / MAXC ? C.warn : C.bad;
+      g.beginPath();
+      if (p.clipped) { const up = p.n.cents > 0 ? -1 : 1; g.moveTo(p.x, p.y + up * 6); g.lineTo(p.x - 6, p.y - up * 4); g.lineTo(p.x + 6, p.y - up * 4); g.closePath(); }
+      else g.arc(p.x, p.y, 5.5, 0, Math.PI * 2);
+      g.fillStyle = col; g.fill();
+      g.lineWidth = 1.5; g.strokeStyle = C.surface; g.stroke();
+      const lx = p.x + 8, ly = p.y - 8;
+      if (!placed.some(q => Math.abs(q.x - lx) < 26 && Math.abs(q.y - ly) < 12)) { placed.push({ x: lx, y: ly }); g.fillStyle = C.ink; g.fillText(p.n.name, lx, ly); }
+    }
+    // Durchschnitt
+    const o = shown.overall;
+    if (isFinite(o.tendency)) {
+      const m = pos(o.tendency, o.q);
+      g.beginPath(); g.arc(m.x, m.y, 11, 0, Math.PI * 2); g.fillStyle = C.accent; g.globalAlpha = 0.9; g.fill(); g.globalAlpha = 1;
+      g.lineWidth = 3; g.strokeStyle = C.surface; g.stroke();
+      g.beginPath(); g.arc(m.x, m.y, 3, 0, Math.PI * 2); g.fillStyle = C.surface; g.fill();
+    }
+  }
+  function targetSummary(r) {
+    const o = r.overall, parts = [];
+    const pitch = Math.abs(o.tendency) < 8 ? 'Tonhöhe im Schnitt mittig' : `Tonhöhe im Schnitt ${Math.round(Math.abs(o.tendency))} Cent zu ${o.tendency < 0 ? 'tief' : 'hoch'}`;
+    parts.push(pitch);
+    if (isFinite(o.q)) parts.push(Math.abs(o.q) <= 0.2 ? 'Klang ausgewogen' : `Klang eher ${o.q < 0 ? 'luftig' : 'gepresst'}`);
+    const far = r.notes.filter(n => !n.missing && Math.abs(n.cents) > 35).map(n => n.name);
+    if (far.length) parts.push(`außerhalb des gelben Rings: ${far.join(', ')}`);
+    return '<b>Kurz:</b> ' + parts.join(' · ') + (calib ? '' : ' · Klangachse noch nicht kalibriert') + '.';
+  }
+
   function render(r, title, source, example) {
     const o = r.overall;
+    shown = r; $('targetSummary').innerHTML = targetSummary(r); requestAnimationFrame(drawTarget);
     $('badge').textContent = example ? 'Beispiel · Modellstimme' : 'Deine Aufnahme';
     $('badge').style.color = example ? 'var(--warn)' : 'var(--good)';
     $('score').textContent = isFinite(o.score) ? o.score : '–';
@@ -566,7 +651,9 @@ a { color: var(--accent); }
     if (playhead != null && playhead >= 0) { g.strokeStyle = C.ink; g.globalAlpha = 0.5; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x(playhead), T); g.lineTo(x(playhead), H - B); g.stroke(); g.globalAlpha = 1; }
   }
   function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
-  window.addEventListener('resize', draw);
+  window.addEventListener('resize', () => { draw(); drawTarget(); });
+  new MutationObserver(drawTarget).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  if (window.matchMedia) { const mq2 = window.matchMedia('(prefers-color-scheme: dark)'); mq2.addEventListener && mq2.addEventListener('change', drawTarget); }
   if (window.matchMedia) { const mq = window.matchMedia('(prefers-color-scheme: dark)'); mq.addEventListener && mq.addEventListener('change', draw); }
   new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
