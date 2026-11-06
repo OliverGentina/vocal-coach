@@ -1,4 +1,4 @@
-# Tonlabor – Gesangstrainer
+# Tonlabor – Gesangstrainer (vocal-coach)
 
 Gesangstrainer, der im Browser läuft: Töne und Intervalle werden grafisch vorgegeben, dann singst du ein. Die App wertet aus:
 
